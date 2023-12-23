@@ -1,0 +1,167 @@
+import re
+import json
+
+def dict_parser():
+
+    list_of_dicts = []
+
+    with open('cedict_ts.u8', encoding="utf-8") as file:
+        text = file.read()
+        lines = text.split('\n')
+        dict_lines = list(lines)
+
+    def parse_line(line):
+        parsed = {}
+        if line == '':
+            dict_lines.remove(line)
+            return 0
+        line = line.rstrip('/')
+        line = line.split('/')
+        if len(line) <= 1:
+            return 0
+        english = line[1:]
+        char_and_pinyin = line[0].split('[')
+        characters = char_and_pinyin[0]
+        characters = characters.split()
+        traditional = characters[0]
+        simplified = characters[1]
+        pinyin = char_and_pinyin[1]
+        pinyin = pinyin.rstrip()
+        pinyin = pinyin.rstrip("]")
+        parsed['traditional'] = traditional
+        parsed['simplified'] = simplified
+        parsed['pinyin'] = pinyin
+        parsed['english'] = english
+        list_of_dicts.append(parsed)
+        
+            
+    def main():
+
+        # make each line into a dictionary
+        print("Parsing dictionary . . .")
+        for line in dict_lines:
+                parse_line(line)
+
+        return list_of_dicts
+    
+    return main()
+    
+
+def char_parser():
+
+    with open("3k_chars_dict.txt", encoding="utf-8") as file:
+        content = file.read()
+
+    characters = []
+    
+    for line in content.splitlines():
+        char = re.findall(r"[\u4e00-\u9fff]+", line)
+        char = char[0:1]
+        characters = characters + char
+
+    return characters
+
+
+parsed_dict = dict_parser()
+parsed_chars = char_parser()
+
+
+def find_index(dict):
+        accumulatedIdxs = 0 
+        # a low index of a character in the 3k list means the character is more widely used, 
+        # thus a cumulative index of all characters contained in a word is used to determine 
+        # the word's position when the list is sorted 
+        for char in dict["simplified"]:
+            if char in parsed_chars:
+                idx = parsed_chars.index(char)
+            else:
+                idx = 3001
+            accumulatedIdxs += idx
+        return accumulatedIdxs
+
+
+def remove_names(pinyin): # remove surnames, names of places, brands, etc.
+    return pinyin[0].islower()
+
+def remove_remainingSurnames(english):
+    if (len(english) <= 2):
+        for translation in english:
+            if ("surname" in translation):
+                return False
+        return True
+    else:
+        return True
+
+
+parsed_dict = list(filter(lambda a: remove_names(a["pinyin"]), parsed_dict))
+parsed_dict = list(filter(lambda a: remove_remainingSurnames(a["english"]), parsed_dict))
+
+parsed_dict.sort(key=find_index)
+
+
+def filter_chars(char):
+    for dict_item in parsed_dict:
+        if char in dict_item["simplified"] and len(dict_item["simplified"]) > 1:
+            return True
+    return False
+
+
+parsed_chars = list(filter(lambda a: filter_chars(a), parsed_chars)) 
+# make sure all chars are contained in at least one "simplified" value longer than 1 in a parsed_dict item
+# since these are the words that will be sent to the front end (route '/search_dict/<char>')
+
+
+def filter_dict(simplified): # filter out dictionairies in which no characters in "simplified" are present in parsed_chars
+    for char in simplified:
+            if char in parsed_chars:
+                return True
+    return False
+    
+parsed_dict = list(filter(lambda a: filter_dict(a["simplified"]), parsed_dict))
+
+with open('processed_dict.txt', 'w', encoding="utf-8") as f:
+    for dict in parsed_dict:
+        f.write(json.dumps(dict) + '\n')
+
+
+def translate_chars():
+
+    translated_chars = []
+
+    for char in parsed_chars:
+      filtered = list(filter(lambda a: a["simplified"] == char, parsed_dict)) # as a result of filtering the dictionary, this list will be empty for some characters
+      if (len(filtered) == 0):
+          continue
+      translations = []
+      pinyin = ""
+      ct = 0 # the count is used to go through every single translation and add it to the list
+      for el in filtered:
+        if (el["pinyin"] not in pinyin):
+            pinyin += el["pinyin"] + " / "
+        for translation in el["english"]:
+            if (translation not in translations):    
+                translations.append(translation)
+        ct += 1
+        if (ct == len(filtered)):
+           pinyin = pinyin.rstrip(" /")
+           translated_chars.append({"simplified": char, "pinyin": pinyin, "english": translations})
+    return translated_chars
+
+
+translated = translate_chars()[:2500] # after processing the list, shorten it for simplicity to a round length since the resulting list is 2958 entries long  
+
+with open('processed_chars.txt', 'w', encoding="utf-8") as f:
+    for dict in translated:
+        f.write(json.dumps(dict) + '\n')
+
+
+print("Finished writing")
+
+
+''' These entries were manually removed from processed_dict.txt as their "pinyin" values are out of format
+{'traditional': '圈a', 'simplified': '圈a', 'pinyin': 'quan1 a', 'english': ['at symbol, @']}
+{'traditional': '異維A酸', 'simplified': '异维A酸', 'pinyin': 'yi4 wei2 A suan1', 'english': ['isotretinoin (used in acne treatment)']}
+{'traditional': '雙酚A', 'simplified': '双酚A', 'pinyin': 'shuang1 fen1 A', 'english': ['bisphenol A (BPA)']}
+{'traditional': '卡拉OK', 'simplified': '卡拉OK', 'pinyin': 'ka3 la1 O K', 'english': ['karaoke (loanword)']}
+{'traditional': '小case', 'simplified': '小case', 'pinyin': 'xiao3 c a s e', 'english': ['(slang) a piece of cake', 'a simple matter']}
+{'traditional': '打call', 'simplified': '打call', 'pinyin': 'da3 c a l l', 'english': ['(slang) to cheer sb on', "to show one's support", '("call" is pronounced approximately like English "call")']}'''
