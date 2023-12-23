@@ -6,7 +6,7 @@ app = Flask(__name__)
 CORS(app)
 
 
-@app.route('/get_chars', methods=['GET'])
+@app.route('/', methods=['GET'])
 def get_chars():
     processed_chars = read_file("processed_chars.txt")
     return jsonify(processed_chars)
@@ -33,7 +33,7 @@ def read_file(file_name):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 
 
